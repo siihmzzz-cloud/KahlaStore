@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
-import { supabaseAnonKey, supabaseUrl } from './supabaseConfig'
+import { isSupabaseConfigured, supabaseAnonKey, supabaseConfigMessage, supabaseUrl } from './supabaseConfig'
 import type { Database } from './database.types'
+
+if (!isSupabaseConfigured) throw new Error(supabaseConfigMessage)
 
 const supabaseRuntime = globalThis as typeof globalThis & { __ka7laSupabaseClient?: ReturnType<typeof createClient<Database>> }
 

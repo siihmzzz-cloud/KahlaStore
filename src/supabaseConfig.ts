@@ -1,6 +1,5 @@
-export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
-export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+export const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim()
+export const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim()
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey)
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Supabase is not configured. Copy .env.example to .env.local and add the project URL and anon key.')
-}
+export const supabaseConfigMessage = 'Admin services are not configured for this deployment. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel project settings, then redeploy.'

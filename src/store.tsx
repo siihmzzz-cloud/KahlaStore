@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, Bell, Boxes, Check, ChevronDown, Heart, LayoutDashboard, LockKeyhole, LogOut, Menu, Minus, Package, Pencil, Percent, Plus, Save, Search, Settings, ShieldCheck, ShoppingBag, ShoppingCart, SlidersHorizontal, Store, Tag, Trash2, Truck, UserRound, X } from 'lucide-react'
 import { gsap } from 'gsap'
-import { supabaseAnonKey, supabaseUrl } from './supabaseConfig'
+import { isSupabaseConfigured, supabaseAnonKey, supabaseConfigMessage, supabaseUrl } from './supabaseConfig'
 
 type Category = string
 type Product = { id: string; slug: string; name: string; category: Category; type: string; price: number; stock?: number; image: string; image2: string; colors: string[]; sizes: string[]; featured?: boolean; newest?: boolean; description?: string }
@@ -79,6 +79,7 @@ function App() {
   },[route])
   useEffect(() => {
     let alive=true
+    if(!isSupabaseConfigured)return()=>{alive=false}
     const get=(table:string,query:string)=>fetch(`${supabaseUrl}/rest/v1/${table}?${query}`,{headers:{apikey:supabaseAnonKey,Authorization:`Bearer ${supabaseAnonKey}`,Accept:'application/json'}})
     void Promise.all([get('products','select=*&order=created_at.asc'),get('store_settings','select=*&id=eq.default&limit=1')]).then(async([catalogResponse,settingsResponse])=>{
       if(!alive)return
@@ -189,7 +190,7 @@ function Drawer({type,close,go,cart,updateCart,subtotal,wish,toggleWish}:{type:'
 function SignIn({onSignIn,go}:{onSignIn:(email:string,password:string)=>Promise<void>;go:(path:string)=>void}) {
   const [password,setPassword]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false)
   const submit=async(e:React.FormEvent)=>{e.preventDefault();setError('');setBusy(true);try{await onSignIn(ADMIN_EMAIL,password)}catch(err){setError(err instanceof Error?err.message:'Could not authenticate. Please try again.')}finally{setBusy(false)}}
-  return <main className="signin-page"><div className="signin-card"><div className="signin-mark"><ShieldCheck/></div><p className="eyebrow">KA7LA STORE / ADMIN</p><h1>ADMIN SIGN IN.</h1><p className="signin-copy">Sign in with the store administrator credentials.</p><form onSubmit={submit}><label htmlFor="admin-email">ADMIN EMAIL</label><input id="admin-email" type="email" autoComplete="username" value={ADMIN_EMAIL} readOnly/><label htmlFor="admin-password">PASSWORD</label><input id="admin-password" type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required/><button className="button dark full" type="submit" disabled={busy}>{busy?'CONNECTING…':'SIGN IN TO ADMIN'} <ArrowRight/></button>{error&&<p className="signin-error" role="alert">{error}</p>}</form><div className="local-auth-warning"><b>SECURE ADMIN ACCESS</b><p>Your password is used only to verify this administrator account. Changes are restricted to the authorized store admin.</p></div><button className="text-link signin-back" onClick={()=>go('/')}>BACK TO STORE <ArrowLeft/></button></div></main>
+  return <main className="signin-page"><div className="signin-card"><div className="signin-mark"><ShieldCheck/></div><p className="eyebrow">KA7LA STORE / ADMIN</p><h1>ADMIN SIGN IN.</h1><p className="signin-copy">Sign in with the store administrator credentials.</p><form onSubmit={submit}><label htmlFor="admin-email">ADMIN EMAIL</label><input id="admin-email" type="email" autoComplete="username" value={ADMIN_EMAIL} readOnly/><label htmlFor="admin-password">PASSWORD</label><input id="admin-password" type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required/><button className="button dark full" type="submit" disabled={busy||!isSupabaseConfigured}>{busy?'CONNECTING…':'SIGN IN TO ADMIN'} <ArrowRight/></button>{!isSupabaseConfigured&&<p className="signin-error" role="alert">{supabaseConfigMessage}</p>}{error&&<p className="signin-error" role="alert">{error}</p>}</form><div className="local-auth-warning"><b>SECURE ADMIN ACCESS</b><p>Your password is used only to verify this administrator account. Changes are restricted to the authorized store admin.</p></div><button className="text-link signin-back" onClick={()=>go('/')}>BACK TO STORE <ArrowLeft/></button></div></main>
 }
 
 type AdminTab='Overview'|'Products'|'Orders'|'Categories'|'Discounts'|'Settings'
