@@ -12,6 +12,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 })
 
 const clean = (value: unknown, max: number) => typeof value === 'string' ? value.trim().slice(0, max) : ''
+const SHIPPING_FEE = 8
 const requestCounts = new Map<string, { count: number; resetAt: number }>()
 
 Deno.serve(async (request: Request) => {
@@ -64,7 +65,7 @@ Deno.serve(async (request: Request) => {
       if (product.stock !== null && product.stock < qty) throw new Error('An item in your bag is out of stock.')
       return { key: `${product.id}-${size}-${color}`, productId: product.id, name: product.name, price: Number(product.price), image: product.image, qty, size, color }
     })
-    const total = items.reduce((sum: number, item: { price: number; qty: number }) => sum + item.price * item.qty, 0)
+    const total = items.reduce((sum: number, item: { price: number; qty: number }) => sum + item.price * item.qty, 0) + SHIPPING_FEE
     const id = `K7-${crypto.randomUUID().slice(0, 8).toUpperCase()}`
     const { data: saved, error: saveError } = await admin.from('orders').insert({
       id,

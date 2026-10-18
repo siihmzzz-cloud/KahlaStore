@@ -17,6 +17,7 @@ type ProductRow = {
   stock: number | null
   image: string
   image2: string
+  images: string[]
   colors: string[]
   sizes: string[]
   featured: boolean
