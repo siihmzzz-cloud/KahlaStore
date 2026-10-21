@@ -1,0 +1,2 @@
+alter table public.products
+  add column if not exists variants jsonb not null default '[]'::jsonb;

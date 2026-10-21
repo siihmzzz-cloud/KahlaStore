@@ -19,7 +19,7 @@ const notifyTelegram = async (order: Record<string, unknown>, items: Array<Recor
   const token = Deno.env.get('TELEGRAM_BOT_TOKEN')
   const chatId = Deno.env.get('TELEGRAM_CHAT_ID')
   if (!token || !chatId) return false
-  const itemLines = items.map((item) => `• ${item.name} — ${item.qty} × ${item.price} DT | ${item.size} | ${item.color}`).join('\n')
+  const itemLines = items.map((item) => `• ${item.name} — ${item.qty} × ${item.price} DT | ${item.size} | ${item.colorName || item.color}`).join('\n')
   const message = [
     'NEW KA7LA STORE ORDER',
     `Order: ${order.id}`,
@@ -88,7 +88,7 @@ Deno.serve(async (request: Request) => {
     const requestedItems = Array.isArray(payload.items) ? payload.items : []
     if (!requestedItems.length || requestedItems.length > 20) return json({ error: 'Your bag could not be checked.' }, 400)
     const ids = [...new Set(requestedItems.map((item: Record<string, unknown>) => clean(item.productId, 80)).filter(Boolean))]
-    const { data: products, error: productsError } = await admin.from('products').select('id,name,price,stock,image,sizes,colors').in('id', ids)
+    const { data: products, error: productsError } = await admin.from('products').select('id,name,price,stock,image,sizes,colors,variants').in('id', ids)
     if (productsError || !products || products.length !== ids.length) return json({ error: 'One or more items are no longer available.' }, 400)
 
     const items = requestedItems.map((requested: Record<string, unknown>) => {
@@ -97,10 +97,17 @@ Deno.serve(async (request: Request) => {
       const size = clean(requested.size, 20)
       const color = clean(requested.color, 30)
       if (!product || !Number.isInteger(qty) || qty < 1 || qty > 10) throw new Error('Check item quantities and try again.')
-      if (product.sizes.length && !product.sizes.includes(size)) throw new Error('A selected size is no longer available.')
-      if (product.colors.length && !product.colors.includes(color)) throw new Error('A selected color is no longer available.')
+      const variants = Array.isArray(product.variants) ? product.variants : []
+      const variant = variants.find((item: { color?: string }) => item.color === color)
+      if (variants.length && !variant) throw new Error('The selected color is no longer available.')
+      if (variant) {
+        if (!Array.isArray(variant.sizes) || !variant.sizes.includes(size)) throw new Error('That size is not available in the selected color.')
+      } else {
+        if (product.sizes.length && !product.sizes.includes(size)) throw new Error('A selected size is no longer available.')
+        if (product.colors.length && !product.colors.includes(color)) throw new Error('A selected color is no longer available.')
+      }
       if (product.stock !== null && product.stock < qty) throw new Error('An item in your bag is out of stock.')
-      return { key: `${product.id}-${size}-${color}`, productId: product.id, name: product.name, price: Number(product.price), image: product.image, qty, size, color }
+      return { key: `${product.id}-${size}-${color}`, productId: product.id, name: product.name, price: Number(product.price), image: variant?.images?.[0] || product.image, qty, size, color, colorName: variant?.name || color }
     })
     const subtotal = items.reduce((sum: number, item: { price: number; qty: number }) => sum + item.price * item.qty, 0)
     let discount = 0

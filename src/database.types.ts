@@ -18,6 +18,7 @@ type ProductRow = {
   image: string
   image2: string
   images: string[]
+  variants: Json
   colors: string[]
   sizes: string[]
   featured: boolean
