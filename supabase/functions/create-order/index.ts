@@ -19,7 +19,7 @@ const notifyTelegram = async (order: Record<string, unknown>, items: Array<Recor
   const token = Deno.env.get('TELEGRAM_BOT_TOKEN')
   const chatId = Deno.env.get('TELEGRAM_CHAT_ID')
   if (!token || !chatId) return false
-  const itemLines = items.map((item) => `• ${item.name} — ${item.qty} × ${item.price} DT | ${item.size} | ${item.colorName || item.color}`).join('\n')
+  const itemLines = items.map((item) => `• ${item.name} — ${item.qty} × ${item.price} DT | ${item.size} | ${item.colorName || item.color}${Number(item.quantityDiscountAmount) > 0 ? ` | multi-buy −${item.quantityDiscountAmount} DT` : ''}`).join('\n')
   const message = [
     'NEW KA7LA STORE ORDER',
     `Order: ${order.id}`,
@@ -40,6 +40,51 @@ const notifyTelegram = async (order: Record<string, unknown>, items: Array<Recor
     body: JSON.stringify({ chat_id: chatId, text: message }),
   })
   if (!response.ok) throw new Error(`Telegram returned HTTP ${response.status}`)
+  return true
+}
+
+const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!)
+
+const notifyAdminEmail = async (order: Record<string, unknown>, items: Array<Record<string, unknown>>, total: number) => {
+  const apiKey = Deno.env.get('RESEND_API_KEY')
+  const from = Deno.env.get('ORDER_EMAIL_FROM')
+  const to = Deno.env.get('ADMIN_ORDER_EMAIL') || 'siihmzzz@gmail.com'
+  if (!apiKey || !from) return false
+
+  const itemLines = items.map((item) => `• ${item.name} — ${item.qty} × ${item.price} DT | ${item.size} | ${item.colorName || item.color}${Number(item.quantityDiscountAmount) > 0 ? ` | multi-buy −${item.quantityDiscountAmount} DT` : ''}`).join('\n')
+  const details = [
+    `Order: ${order.id}`,
+    `Customer: ${order.customer_name}`,
+    `Phone: ${order.phone}`,
+    `Email: ${order.email}`,
+    `Address: ${order.address}, ${order.city} ${order.postal_code}`,
+    order.delivery_notes ? `Delivery notes: ${order.delivery_notes}` : '',
+    '',
+    'ITEMS',
+    itemLines,
+    '',
+    `TOTAL (including 8 DT shipping): ${total} DT`,
+  ].filter(Boolean).join('\n')
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': `ka7la-order-${order.id}`,
+    },
+    body: JSON.stringify({
+      from,
+      to: [to],
+      subject: `New KA7LA order ${order.id}`,
+      text: details,
+      html: `<h2>New KA7LA Store order</h2><pre style="font:14px/1.6 sans-serif;white-space:pre-wrap">${escapeHtml(details)}</pre>`,
+    }),
+  })
+  if (!response.ok) {
+    const message = await response.text()
+    throw new Error(`Order email provider returned HTTP ${response.status}: ${message.slice(0, 240)}`)
+  }
   return true
 }
 
@@ -91,7 +136,7 @@ Deno.serve(async (request: Request) => {
     const { data: products, error: productsError } = await admin.from('products').select('id,name,price,stock,image,sizes,colors,variants').in('id', ids)
     if (productsError || !products || products.length !== ids.length) return json({ error: 'One or more items are no longer available.' }, 400)
 
-    const items = requestedItems.map((requested: Record<string, unknown>) => {
+    const rawItems = requestedItems.map((requested: Record<string, unknown>) => {
       const product = products.find((entry) => entry.id === clean(requested.productId, 80))
       const qty = Number(requested.qty)
       const size = clean(requested.size, 20)
@@ -109,15 +154,24 @@ Deno.serve(async (request: Request) => {
       if (product.stock !== null && product.stock < qty) throw new Error('An item in your bag is out of stock.')
       return { key: `${product.id}-${size}-${color}`, productId: product.id, name: product.name, price: Number(product.price), image: variant?.images?.[0] || product.image, qty, size, color, colorName: variant?.name || color }
     })
+    const quantitiesByProduct = new Map<string, number>()
+    rawItems.forEach((item: { productId: string; qty: number }) => quantitiesByProduct.set(item.productId, (quantitiesByProduct.get(item.productId) || 0) + item.qty))
+    const items = rawItems.map((item: { productId: string; price: number; qty: number }) => {
+      const productQuantity = quantitiesByProduct.get(item.productId) || 0
+      const quantityDiscountPercent = productQuantity >= 4 ? 16 : productQuantity === 3 ? 14 : productQuantity === 2 ? 6 : 0
+      const quantityDiscountAmount = Math.round(item.price * item.qty * quantityDiscountPercent) / 100
+      return { ...item, quantityDiscountPercent, quantityDiscountAmount }
+    })
     const subtotal = items.reduce((sum: number, item: { price: number; qty: number }) => sum + item.price * item.qty, 0)
+    const quantityDiscount = items.reduce((sum: number, item: { quantityDiscountAmount: number }) => sum + item.quantityDiscountAmount, 0)
     let discount = 0
     if (discountCode) {
       const { data: coupon, error } = await admin.from('discounts').select('amount,active').eq('code', discountCode).eq('active', true).maybeSingle()
       if (error || !coupon) return json({ error: 'This discount code is invalid or no longer active.' }, 400)
       if (!Number.isFinite(Number(coupon.amount)) || Number(coupon.amount) < 1 || Number(coupon.amount) > 90) return json({ error: 'This discount is not configured correctly.' }, 400)
-      discount = Math.round(subtotal * Number(coupon.amount)) / 100
+      discount = Math.round(Math.max(0, subtotal - quantityDiscount) * Number(coupon.amount)) / 100
     }
-    const total = Math.max(0, subtotal - discount) + SHIPPING_FEE
+    const total = Math.max(0, subtotal - quantityDiscount - discount) + SHIPPING_FEE
     const id = `K7-${crypto.randomUUID().slice(0, 8).toUpperCase()}`
     const { data: saved, error: saveError } = await admin.from('orders').insert({
       id,
@@ -133,7 +187,13 @@ Deno.serve(async (request: Request) => {
     } catch (error) {
       console.error('Telegram order notification failed:', error instanceof Error ? error.message : 'Unknown error')
     }
-    return json({ order: saved, notificationSent })
+    let emailSent = false
+    try {
+      emailSent = await notifyAdminEmail({ id: saved.id, ...order }, items, total)
+    } catch (error) {
+      console.error('Admin order email failed:', error instanceof Error ? error.message : 'Unknown error')
+    }
+    return json({ order: saved, notificationSent, emailSent })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Order could not be placed.'
     return json({ error: message }, 400)
