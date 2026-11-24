@@ -88,6 +88,32 @@ const notifyAdminEmail = async (order: Record<string, unknown>, items: Array<Rec
   return true
 }
 
+type AdminClient = ReturnType<typeof createClient>
+type StockReservation = { id: string; qty: number }
+
+// Put back stock that was reserved before a later product in the same bag failed.
+// Each restore is guarded on the value just read so a concurrent change is never overwritten.
+const releaseReservations = async (admin: AdminClient, reservations: StockReservation[]) => {
+  for (const reservation of reservations) {
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { data: product } = await admin.from('products').select('stock').eq('id', reservation.id).maybeSingle()
+        if (!product || product.stock === null) break
+        const currentStock = Number(product.stock)
+        const { data: restored } = await admin.from('products').update({
+          stock: currentStock + reservation.qty,
+          updated_at: new Date().toISOString(),
+        }).eq('id', reservation.id).eq('stock', currentStock).select('id')
+        if (restored?.length) break
+      }
+    } catch (error) {
+      console.error('Could not release reserved stock:', error instanceof Error ? error.message : 'Unknown error')
+    }
+  }
+}
+
+const SOLD_OUT_ERROR = { error: 'An item in your bag just sold out. Please review your bag and try again.' }
+
 Deno.serve(async (request: Request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
@@ -181,6 +207,40 @@ Deno.serve(async (request: Request) => {
       ...order,
     }).select('id,created_at,total').single()
     if (saveError || !saved) return json({ error: 'We could not save your order. Please try again.' }, 500)
+
+    // Reserve inventory before telling anyone about the order. Quantities were already
+    // aggregated per product for the multi-buy math, so each product gets one update.
+    // supabase-js cannot send `stock = stock - qty` as an expression, so we re-read stock
+    // and guard the write on the exact value observed. The `stock is null or stock >= qty`
+    // filter is kept in the update itself; together with the observed-value guard this is
+    // an atomic conditional update that cannot oversell when two orders race.
+    const productIds = [...quantitiesByProduct.keys()]
+    const reserved: StockReservation[] = []
+    const rejectOrder = async () => {
+      await releaseReservations(admin, reserved)
+      await admin.from('orders').delete().eq('id', saved.id)
+      return json(SOLD_OUT_ERROR, 409)
+    }
+
+    const { data: stockRows, error: stockError } = await admin.from('products').select('id,stock').in('id', productIds)
+    if (stockError || !stockRows || stockRows.length !== productIds.length) return await rejectOrder()
+
+    const currentStocks = new Map<string, number | null>((stockRows as Array<{ id: string; stock: number | null }>).map((row) => [row.id, row.stock]))
+    for (const productId of productIds) {
+      const qty = quantitiesByProduct.get(productId)!
+      const currentStock = currentStocks.get(productId)
+      if (currentStock === undefined || (currentStock !== null && currentStock < qty)) return await rejectOrder()
+
+      const update = admin.from('products').update({
+        stock: currentStock === null ? null : currentStock - qty,
+        updated_at: new Date().toISOString(),
+      }).eq('id', productId).or(`stock.is.null,stock.gte.${qty}`)
+      const conditional = currentStock === null ? update.is('stock', null) : update.eq('stock', currentStock)
+      const { data: updatedRows, error: reserveError } = await conditional.select('id')
+      if (reserveError || !updatedRows?.length) return await rejectOrder()
+      if (currentStock !== null) reserved.push({ id: productId, qty })
+    }
+
     let notificationSent = false
     try {
       notificationSent = await notifyTelegram({ id: saved.id, ...order }, items, total)

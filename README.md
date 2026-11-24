@@ -1,49 +1,56 @@
-# Ka7la Store
+# KA7LA Store
 
-A responsive fashion storefront built with React, TypeScript, Vite, and Lucide icons.
+Storefront for KA7LA streetwear (Tunisia). React, TypeScript and Vite on the front end, Supabase for the catalog, orders, discounts and support, and a Supabase Edge Function for order processing.
+
+## Store
+
+- **Catalog** — products, categories, prices, images and stock come from Supabase. Collection filters, sorting and search run against the live catalog.
+- **Stock** — every successful order reserves its items with a conditional, concurrency-safe decrement of `products.stock`. `NULL` stock means unlimited. If an item cannot be reserved, the order is removed and checkout returns a sold-out message before any notification is sent.
+- **Checkout** — customer and delivery details are stored with each order. Payment is cash on delivery. Card payment is not offered.
+- **Discounts** — codes are validated against the `discounts` table at checkout and rejected when inactive or misconfigured. Multi-buy quantity discounts are applied per product.
+- **Support** — customer messages go into a Supabase-backed support inbox with ticket status, customer replies and admin responses.
+- **Admin** — `/signin` and `/admin` manage products, stock, categories, discounts, order statuses, support tickets and store settings. New orders and support tickets arrive in real time through Supabase Realtime. Product photos can be uploaded to the `store-images` Supabase Storage bucket (JPG, PNG, WEBP or AVIF, up to 8 MB).
+
+Row-level security restricts admin writes to the configured admin email; storefront catalog reads are public. The admin account must exist in Supabase Auth and be email-confirmed if the project requires confirmation. Account creation is not offered in the app.
+
+## Configuration
+
+Browser variables (`.env.local`, based on `.env.example`):
+
+| Variable | Purpose |
+| --- | --- |
+| `VITE_SUPABASE_URL` | Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Public anon/publishable key (`VITE_SUPABASE_PUBLISHABLE_KEY` is also accepted) |
+| `VITE_SITE_URL` | Public site origin, used for absolute social-preview image URLs |
+
+Never put a service-role key or other secret in the browser app. `src/supabaseConfig.ts` contains browser-safe project defaults so production builds connect even when `.env.local` is not present.
+
+`create-order` Edge Function secrets (set with `supabase secrets set`):
+
+| Secret | Purpose |
+| --- | --- |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token for new-order messages |
+| `TELEGRAM_CHAT_ID` | Telegram chat that receives new-order messages |
+| `RESEND_API_KEY` | Resend API key for new-order emails |
+| `ORDER_EMAIL_FROM` | Verified sender, e.g. `KA7LA Store <orders@your-domain.tn>` |
+| `ADMIN_ORDER_EMAIL` | Optional recipient override (defaults to `siihmzzz@gmail.com`) |
+
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided automatically to Edge Functions. Telegram and email notifications are best effort: a provider failure is logged but does not cancel a saved order. The order ID is used as the email idempotency key.
 
 ## Run locally
 
 ```sh
 npm install
+cp .env.example .env.local   # fill in the values for your project
 npm run dev
 ```
 
-Copy `.env.example` to `.env.local` and set the project URL and public anon key before starting the app. Never put a service-role or secret key in this browser app.
-
 Create a production build with `npm run build` and serve it with `npm run preview`.
 
-## Store features
+## Deploy
 
-- Home, collection, product, search, wishlist, cart, account placeholder, and checkout routes with customer details and server-saved orders.
-- Collection category and price filters, sorting, and product search.
-- Product size and color selection, cart quantity controls, and size validation.
-- Guest cart and wishlist persisted in browser local storage.
-- Responsive navigation drawers, search dialog, and mobile category/filter layouts.
-- A continuous horizontal marquee that loops independently of scrolling.
-- Email/password admin sign-in at `/signin` and `/admin` for `Siihmzzz@gmail.com`.
-- Admin controls for products and demo stock, categories, order statuses, discounts, and storefront settings, stored in the shared database. Product photos can be uploaded from the admin device.
-
-Database row-level security restricts admin writes to the configured admin email. Storefront reads are public. The admin account must already exist in the authentication provider and be email-confirmed if the project requires confirmation. Account creation is intentionally unavailable in the app. Checkout saves customer contact, delivery, and item snapshot details through the `create-order` Edge Function; orders are visible to the admin in real time. Online payment is not configured, and discount codes are not applied at checkout. Inventory still uses fixture values.
-
-### New-order email
-
-The `create-order` Edge Function can email each new order to `siihmzzz@gmail.com` (override with `ADMIN_ORDER_EMAIL`). To enable delivery, verify a sender domain with Resend, create an API key, then configure these Edge Function secrets in Supabase:
-
-```sh
-supabase secrets set RESEND_API_KEY=re_your_key ORDER_EMAIL_FROM="KA7LA Store <orders@your-verified-domain.tn>"
-```
-
-Deploy the function after configuring the secrets:
-
-```sh
-supabase functions deploy create-order
-```
-
-Email delivery is best-effort: a mail-provider error is logged but does not cancel an order that was already saved. The function uses the order ID as an idempotency key to avoid duplicate emails on retries.
-
-Set `VITE_SITE_URL` to the deployed site origin so link previews use an absolute logo image URL. The supplied KA7LA logo is used for the browser icon, home-screen icon, and social preview. Image uploads are limited to JPG, PNG, WEBP, or AVIF files up to 8 MB. Products, images, and prices are development fixtures; the displayed TND currency is provisional and needs confirmation. Checkout creates a server-saved order with customer details; online payment is not configured. Newsletter delivery and legal/contact destinations need real store configuration before launch. Product photography is served from Unsplash URLs and can be replaced in `src/store.tsx`.
-
-## Deploying on Vercel
-
-The connected Supabase project URL and public anon key have browser-safe defaults in `src/supabaseConfig.ts`, so production builds connect even though `.env.local` is ignored by Git. You can override these with `VITE_SUPABASE_URL` and either `VITE_SUPABASE_PUBLISHABLE_KEY` or `VITE_SUPABASE_ANON_KEY`. Set `VITE_SITE_URL` to the public site origin for absolute social-preview image URLs. Never put a service-role or secret key in the browser app.
+1. Apply the SQL files in `supabase/migrations/` to the Supabase project (`supabase db push` or the SQL editor). They create the catalog, orders, discounts, support tables, storage bucket, RLS policies and Realtime publications.
+2. Create the admin user in Supabase Auth with the configured admin email and confirm it.
+3. Set the Edge Function secrets listed above.
+4. Deploy the function: `supabase functions deploy create-order`.
+5. Set the browser variables in your hosting environment (for example Vercel) and deploy the site with `npm run build`.
