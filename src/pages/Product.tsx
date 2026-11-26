@@ -51,29 +51,30 @@ export default function Product({ product: p, go, addCartPicks }: Props) {
   }
   const suggestSize = () => {
     const h = Number(height), w = Number(weight)
-    if (!h || !w || h < 80 || h > 230 || w < 15 || w > 250) { setRecommendation('Enter a valid height (80–230 cm) and weight (15–250 kg).'); return }
+    if (!h || !w || h < 80 || h > 230 || w < 15 || w > 250) { setRecommendation('أدخل طولاً صحيحاً (80–230 سم) ووزناً صحيحاً (15–250 كغ).'); return }
     const available = (guideIndex === null ? variant : productVariant(p, picks[guideIndex]?.color))?.sizes || p.sizes
     if (available.some((size) => /Y$/i.test(size))) {
       const kids = ['2Y', '4Y', '6Y', '8Y']
       const target = h < 105 ? 0 : h < 120 ? 1 : h < 135 ? 2 : 3
       const best = kids[target]
-      setRecommendation(available.includes(best) ? `Recommended: ${best}` : `Closest available: ${available[Math.min(target, available.length - 1)] || available[0]}`)
+      setRecommendation(available.includes(best) ? `المقاس المقترح: ${best}` : `أقرب مقاس متاح: ${available[Math.min(target, available.length - 1)] || available[0]}`)
       return
     }
     const scale = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
     const score = (w - 42) / 11 + (h - 165) / 27
     const idx = Math.max(0, Math.min(scale.length - 1, Math.round(score) + 1))
     const best = available.reduce((closest, size) => Math.abs(scale.indexOf(size) - idx) < Math.abs(scale.indexOf(closest) - idx) ? size : closest, available[0] || 'M')
-    setRecommendation(`Recommended: ${best}`)
+    setRecommendation(`المقاس المقترح: ${best}`)
   }
   const applyRecommendation = () => {
-    const size = recommendation.match(/(?:Recommended|Closest available): ([^ ]+)/)?.[1]
+    const size = recommendation.match(/(?:المقاس المقترح|أقرب مقاس متاح): ([^ ]+)/)?.[1]
     if (size && guideIndex !== null) {
       setPicks((current) => current.map((pick, index) => index === guideIndex ? { ...pick, size } : pick))
       setGuideIndex(null); setRecommendation(''); setError('')
     }
   }
   const amountOff = Math.round(p.price * count * multiBuyRate(count)) / 100
+  const invalidRecommendation = recommendation.startsWith('أدخل')
   const submit = (checkout: boolean) => {
     if (soldOut) return
     if (selectedPicks.some((pick) => !pick.color || !pick.size)) { setError('Choose a color and an available size for every piece.'); return }
@@ -137,7 +138,7 @@ export default function Product({ product: p, go, addCartPicks }: Props) {
                 <div className="pick-group"><span className="pick-label">COLOR</span>
                   <div className="detail-swatches">{variants.map((item) => <button key={item.id} style={{ background: item.color }} className={pick.color === item.color ? 'is-active' : ''} aria-label={`Piece ${index + 1}: ${item.name}`} title={item.name} onClick={() => pickColor(index, item.color)} />)}</div>
                 </div>
-                <div className="pick-group"><div className="pick-label-row"><span className="pick-label">SIZE</span><button className="size-guide-trigger" onClick={() => { setGuideIndex(index); setHeight(''); setWeight(''); setRecommendation('') }}>SIZE GUIDE <ArrowUpRight size={12} /></button></div>
+                <div className="pick-group"><div className="pick-label-row"><span className="pick-label">SIZE</span><button className="size-guide-trigger" onClick={() => { setGuideIndex(index); setHeight(''); setWeight(''); setRecommendation('') }}>دليل المقاسات <ArrowUpRight size={12} /></button></div>
                   <div className="size-buttons">{availableSizes.map((size) => <button key={size} className={pick.size === size ? 'is-active' : ''} onClick={() => { setPicks((current) => current.map((item, pickIndex) => pickIndex === index ? { ...item, size } : item)); setError('') }}>{size}</button>)}</div>
                 </div>
               </article>
@@ -167,18 +168,18 @@ export default function Product({ product: p, go, addCartPicks }: Props) {
 
       {guideIndex !== null && (
         <div className="guide-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setGuideIndex(null) }}>
-          <section className="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guide-title">
-            <button className="guide-close" onClick={() => setGuideIndex(null)} aria-label="Close size guide"><X size={18} /></button>
-            <span className="section-tag">A QUICK FIT CHECK · PIECE {guideIndex + 1}</span>
-            <h2 id="guide-title">Find your size.</h2>
-            <p>Share your height and weight for a simple estimate. Fit can vary by style.</p>
+          <section className="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guide-title" dir="rtl" lang="ar">
+            <button className="guide-close" onClick={() => setGuideIndex(null)} aria-label="إغلاق دليل المقاسات"><X size={18} /></button>
+            <span className="section-tag">فحص سريع للمقاس · القطعة {guideIndex + 1}</span>
+            <h2 id="guide-title">اعثر على مقاسك.</h2>
+            <p>أدخل الطول والوزن للحصول على تقدير بسيط. قد يختلف المقاس حسب التصميم.</p>
             <div className="guide-fields">
-              <label>HEIGHT <span>CM</span><input type="number" min="80" max="230" placeholder="e.g. 175" value={height} onChange={(e) => setHeight(e.target.value)} /></label>
-              <label>WEIGHT <span>KG</span><input type="number" min="15" max="250" placeholder="e.g. 70" value={weight} onChange={(e) => setWeight(e.target.value)} /></label>
+              <label>الطول <span>سم</span><input type="number" min="80" max="230" placeholder="مثال 175" value={height} onChange={(e) => setHeight(e.target.value)} /></label>
+              <label>الوزن <span>كغ</span><input type="number" min="15" max="250" placeholder="مثال 70" value={weight} onChange={(e) => setWeight(e.target.value)} /></label>
             </div>
-            <button className="solid-btn full" onClick={suggestSize}>SUGGEST A SIZE <ArrowRight size={15} /></button>
-            {recommendation && <div className={`guide-result${recommendation.startsWith('Enter') ? ' is-invalid' : ''}`} role="status"><Check size={17} /><span>{recommendation}<small>A general estimate, not a garment measurement.</small></span>{!recommendation.startsWith('Enter') && <button onClick={applyRecommendation}>USE SIZE</button>}</div>}
-            <div className="size-chart"><h3>SIZE CHART <span>CM</span></h3><div className="size-chart-scroll"><table><thead><tr><th>SIZE</th><th>WIDTH</th><th>LENGTH</th></tr></thead><tbody>{[['S', '57', '64'], ['M', '60', '66'], ['L', '62', '68'], ['XL', '64', '70']].map((row) => <tr key={row[0]}><th scope="row">{row[0]}</th><td>{row[1]}</td><td>{row[2]}</td></tr>)}</tbody></table></div><p>Measurements may vary slightly by style.</p></div>
+            <button className="solid-btn full" onClick={suggestSize}>اقترح مقاساً <ArrowLeft size={15} /></button>
+            {recommendation && <div className={`guide-result${invalidRecommendation ? ' is-invalid' : ''}`} role="status"><Check size={17} /><span>{recommendation}<small>تقدير عام، وليس قياساً فعلياً للقطعة.</small></span>{!invalidRecommendation && <button onClick={applyRecommendation}>استخدام المقاس</button>}</div>}
+            <div className="size-chart"><h3>جدول المقاسات <span>سم</span></h3><div className="size-chart-scroll"><table><thead><tr><th>المقاس</th><th>العرض</th><th>الطول</th></tr></thead><tbody>{[['S', '57', '64'], ['M', '60', '66'], ['L', '62', '68'], ['XL', '64', '70']].map((row) => <tr key={row[0]}><th scope="row">{row[0]}</th><td>{row[1]}</td><td>{row[2]}</td></tr>)}</tbody></table></div><p>قد تختلف القياسات قليلاً حسب التصميم.</p></div>
           </section>
         </div>
       )}

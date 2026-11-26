@@ -733,6 +733,15 @@ legend { padding: 0; }
 .size-chart table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .size-chart th, .size-chart td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); }
 .size-chart p { color: var(--muted); font-size: 11px; margin: 12px 0 0; }
+.guide-dialog[dir='rtl'] .guide-close { right: auto; left: 18px; }
+.guide-dialog[dir='rtl'] .section-tag,
+.guide-dialog[dir='rtl'] .guide-fields label,
+.guide-dialog[dir='rtl'] .solid-btn,
+.guide-dialog[dir='rtl'] .guide-result button,
+.guide-dialog[dir='rtl'] .size-chart h3 { letter-spacing: 0; }
+.guide-dialog[dir='rtl'] input { text-align: right; }
+.guide-dialog[dir='rtl'] .size-chart th,
+.guide-dialog[dir='rtl'] .size-chart td { text-align: right; }
 
 /* --------------------------------------------------------------- cart page */
 
@@ -1497,6 +1506,7 @@ textarea { resize: vertical; }
 /* ---------------------------------------------------------- mobile polish */
 
 @media (max-width: 720px) {
+  .route-curtain { display: none; }
   .announce { display: flex; align-items: center; height: 34px; font-size: 11px; }
   .site-head { box-shadow: 0 1px 0 var(--line); }
   .nav-bar { height: 60px; padding-inline: 12px; }

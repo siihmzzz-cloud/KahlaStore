@@ -97,18 +97,39 @@ function App() {
         : `${url.split('/').filter(Boolean).pop()?.replace(/-/g, ' ').toUpperCase() || 'SHOP'} — ${settings.brandName}`
   }, [route, settings.brandName, products])
 
-  /* Page entrance + scroll reveals. Everything is scoped to the active route. */
+  /* Page entrance + scroll reveals. Mobile gets a softer, curtain-free entrance. */
   useEffect(() => {
     const root = pageRef.current
     if (!root) return
     const curtain = curtainRef.current
-    if (curtain) {
-      gsap.fromTo(curtain, { scaleY: 1, transformOrigin: 'top center' }, { scaleY: 0, duration: 0.55, ease: 'power3.inOut', transformOrigin: 'bottom center' })
-    }
-    const ctx = gsap.context(() => {
-      gsap.fromTo(root, { autoAlpha: 0, y: 22 }, { autoAlpha: 1, y: 0, duration: 0.55, ease: 'power3.out', clearProps: 'transform' })
-    }, root)
     const mm = gsap.matchMedia()
+
+    mm.add('(max-width: 720px) and (prefers-reduced-motion: no-preference)', () => {
+      if (curtain) gsap.set(curtain, { scaleY: 0 })
+      const tween = gsap.fromTo(root,
+        { autoAlpha: 0, y: 12 },
+        { autoAlpha: 1, y: 0, duration: 0.5, ease: 'power2.out', clearProps: 'transform,opacity,visibility' },
+      )
+      return () => tween.kill()
+    })
+
+    mm.add('(min-width: 721px) and (prefers-reduced-motion: no-preference)', () => {
+      const curtainTween = curtain ? gsap.fromTo(curtain,
+        { scaleY: 1, transformOrigin: 'top center' },
+        { scaleY: 0, duration: 0.55, ease: 'power3.inOut', transformOrigin: 'bottom center' },
+      ) : null
+      const tween = gsap.fromTo(root,
+        { autoAlpha: 0, y: 22 },
+        { autoAlpha: 1, y: 0, duration: 0.55, ease: 'power3.out', clearProps: 'transform,opacity,visibility' },
+      )
+      return () => { curtainTween?.kill(); tween.kill() }
+    })
+
+    mm.add('(prefers-reduced-motion: reduce)', () => {
+      if (curtain) gsap.set(curtain, { scaleY: 0 })
+      gsap.set(root, { clearProps: 'transform,opacity,visibility' })
+    })
+
     mm.add('(prefers-reduced-motion: no-preference)', () => {
       const targets = gsap.utils.toArray<HTMLElement>('[data-reveal]')
       if (targets.length) gsap.set(targets, { autoAlpha: 0, y: 26 })
@@ -124,7 +145,8 @@ function App() {
       requestAnimationFrame(() => ScrollTrigger.refresh())
       return () => { triggers.forEach((t) => t.kill()); parallax.forEach((t) => { t.scrollTrigger?.kill(); t.kill() }) }
     }, root)
-    return () => { mm.revert(); ctx.revert() }
+
+    return () => mm.revert()
   }, [route])
 
   const showToast = (message: string, kind: 'success' | 'error' = 'success') => setToast({ id: Date.now(), message, kind })
@@ -190,6 +212,11 @@ function App() {
   const saveCatalog = async (next: Product[]) => { await saveCatalogRemote(next, bump) }
   const saveSettings = async (next: typeof settings) => { await saveSettingsRemote(next, bump) }
   const signOut = async () => { await signOutAdmin(); setAdminSession(null); go('/signin') }
+  const adminPanel = !authReady
+    ? <main className="signin-page"><p className="eyebrow">CONNECTING SECURE SESSION…</p></main>
+    : adminSession?.role === 'admin'
+      ? <AdminPanel email={adminSession.email} catalog={products} saveCatalog={saveCatalog} deleteProduct={deleteCatalogProduct} settings={settings} saveSettings={saveSettings} signOut={signOut} />
+      : <SignIn onSignIn={signInAdmin} go={go} />
 
   const navLinks = [
     { label: 'SHOP', path: '/shop' },
@@ -238,10 +265,7 @@ function App() {
         {url === '/search' && <Shop key={route} go={go} list={searchMatches} title={searchTerm ? `Results for “${searchTerm}”` : 'Search results'} eyebrow="SEARCH" addCart={addCart} />}
         {(url === '/contact' || url === '/info/contact') && <InfoPage slug="contact" go={go} />}
         {url.startsWith('/info/') && url !== '/info/contact' && <InfoPage slug={url.split('/')[2]} go={go} />}
-        {url === '/signin' && <SignIn onSignIn={signInAdmin} go={go} />}
-        {url === '/admin' && (!authReady ? <main className="signin-page"><p className="eyebrow">CONNECTING SECURE SESSION…</p></main> : adminSession?.role === 'admin'
-          ? <AdminPanel email={adminSession.email} catalog={products} saveCatalog={saveCatalog} deleteProduct={deleteCatalogProduct} settings={settings} saveSettings={saveSettings} signOut={signOut} />
-          : <SignIn onSignIn={signInAdmin} go={go} />)}
+        {(url === '/signin' || url === '/admin') && adminPanel}
         {url === '/not-found' && <main className="section-pad not-found"><span className="section-tag">404</span><h1>PAGE NOT FOUND.</h1><button className="solid-btn" onClick={() => go('/')}>BACK HOME <ArrowRight size={16} /></button></main>}
       </div>
 
